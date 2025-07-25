@@ -1,129 +1,142 @@
+-- Macro Recorder for TDS (Tower Defense Simulator)
+-- Designed for executors (Synapse/Krnl/Script-Ware)
+-- Auto-starts recording when injected
+
 local MacroRecorder = {
-    _originalNamecall = nil,
-    _enabled = true,
-    _eventHandlers = {},
-    _fileWriteEnabled = true, -- Bật/tắt ghi file
-    _logFile = "macros_log.txt" -- Tên file log
+    Enabled = true,
+    LogFolder = "TDS_Macros",
+    LogFile = "macro_"..os.date("%Y%m%d_%H%M%S")..".txt",
+    RecordPlacements = true,
+    RecordUpgrades = true,
+    RecordSales = true,
+    RecordSkips = true,
+    RecordAbilities = true
 }
 
--- Khởi tạo hệ thống ghi file
-function MacroRecorder:_initFileSystem()
-    if not writefile then
-        warn("Hệ thống file không khả dụng (có thể đang chạy trong môi trường không hỗ trợ)")
-        self._fileWriteEnabled = false
-        return
+-- Initialize file system
+function MacroRecorder:InitFileSystem()
+    if not writefile or not makefolder then 
+        warn("File functions not available in this executor")
+        return false
     end
     
-    if not isfolder("MacroScripts") then
-        makefolder("MacroScripts")
+    if not isfolder(self.LogFolder) then
+        makefolder(self.LogFolder)
     end
+    
+    local header = "-- TDS Macro Recording --\n"
+    header = header.."-- Generated: "..os.date("%c").."\n"
+    header = header.."-- Map: "..game:GetService("ReplicatedStorage").State.Map.Value.."\n"
+    header = header.."-- Mode: "..game:GetService("ReplicatedStorage").State.Mode.Value.."\n"
+    header = header.."-- Difficulty: "..game:GetService("ReplicatedStorage").State.Difficulty.Value.."\n\n"
+    
+    writefile(self.LogFolder.."/"..self.LogFile, header)
+    return true
 end
 
--- Ghi dữ liệu vào file
-function MacroRecorder:_writeToFile(content)
-    if not self._fileWriteEnabled then return end
+-- Write to log file
+function MacroRecorder:LogAction(command)
+    if not self.Enabled then return end
     
-    local success, err = pcall(function()
-        local filePath = "MacroScripts/" .. self._logFile
-        if not isfile(filePath) then
-            writefile(filePath, "-- Macro Script Log --\n\n")
-        end
-        appendfile(filePath, content .. "\n")
-    end)
-    
-    if not success then
-        warn("Lỗi khi ghi file:", err)
-    end
+    appendfile(self.LogFolder.."/"..self.LogFile, command.."\n")
+    print("[MACRO] "..command)
 end
 
--- Hook chính
-function MacroRecorder:Start()
-    if self._enabled then return end
-    
-    self:_initFileSystem()
-    
-    self._originalNamecall = hookmetamethod(game, '__namecall', function(...)
-        local selfObj, args = (...), ({select(2, ...)})
+-- Main hook function
+function MacroRecorder:HookGame()
+    local originalNamecall
+    originalNamecall = hookmetamethod(game, '__namecall', function(self, ...)
+        local args = {...}
         local method = getnamecallmethod()
         
-        -- Xử lý RemoteFunction
-        if method == "InvokeServer" and selfObj.Name == "RemoteFunction" then
+        if method == "InvokeServer" and self.Name == "RemoteFunction" then
             local actionType = args[1]
             local actionData = args[2]
             
-            -- Xử lý đặt tháp
-            if actionType == "Troops" and actionData == "Place" then
+            -- Place Troop
+            if self.RecordPlacements and actionType == "Troops" and actionData == "Place" then
                 local troopName = args[3]
                 local position = args[4].Position
                 local rotation = args[4].Rotation
                 local rotX, rotY, rotZ = rotation:ToEulerAnglesYXZ()
                 
-                local logStr = string.format(
-                    'Place("%s", %.2f, %.2f, %.2f, %.2f, %.2f, %.2f)',
+                self:LogAction(string.format(
+                    'TDS:Place("%s", %.2f, %.2f, %.2f, %.2f, %.2f, %.2f)',
                     troopName, position.X, position.Y, position.Z, rotX, rotY, rotZ
-                )
-                self:_writeToFile(logStr)
-                print("[MACRO] " .. logStr)
+                ))
             
-            -- Xử lý nâng cấp tháp
-            elseif actionType == "Troops" and actionData == "Upgrade" then
+            -- Upgrade Troop
+            elseif self.RecordUpgrades and actionType == "Troops" and actionData == "Upgrade" then
                 local troopId = args[4].Troop.Name
                 local path = args[4].Path
                 
-                local logStr = string.format(
-                    'Upgrade(%s, %d)',
+                self:LogAction(string.format(
+                    'TDS:Upgrade(%s, %d)',
                     troopId, path
-                )
-                self:_writeToFile(logStr)
-                print("[MACRO] " .. logStr)
+                ))
             
-            -- Xử lý bán tháp
-            elseif actionType == "Troops" and actionData == "Sell" then
+            -- Sell Troop
+            elseif self.RecordSales and actionType == "Troops" and actionData == "Sell" then
                 local troopId = args[3].Troop.Name
-                
-                local logStr = string.format(
-                    'Sell(%s)',
-                    troopId
-                )
-                self:_writeToFile(logStr)
-                print("[MACRO] " .. logStr)
+                self:LogAction(string.format('TDS:Sell(%s)', troopId))
             
-            -- Xử lý skip wave
-            elseif actionType == "Voting" and actionData == "Skip" then
-                local logStr = 'Skip()'
-                self:_writeToFile(logStr)
-                print("[MACRO] " .. logStr)
+            -- Skip Wave
+            elseif self.RecordSkips and actionType == "Voting" and actionData == "Skip" then
+                self:LogAction('TDS:Skip()')
             end
         end
         
-        return self._originalNamecall(...)
+        return originalNamecall(self, ...)
     end)
-    
-    self._enabled = true
-    print("Macro Recorder: Đã bật hook và ghi file")
 end
 
--- Tắt hook
-function MacroRecorder:Stop()
-    if not self._enabled then return end
-    
-    if self._originalNamecall then
-        hookmetamethod(game, '__namecall', self._originalNamecall)
+-- Auto-start function
+function MacroRecorder:Start()
+    if not self:InitFileSystem() then
+        warn("Failed to initialize macro recording")
+        return
     end
     
-    self._enabled = false
-    print("Macro Recorder: Đã tắt hook")
+    self:HookGame()
+    print(string.format(
+        "Macro Recorder started\nRecording to: %s/%s",
+        self.LogFolder, self.LogFile
+    ))
 end
 
--- Đặt tên file log
-function MacroRecorder:SetLogFileName(filename)
-    self._logFile = filename .. ".txt"
+-- UI Toggle (optional)
+function MacroRecorder:CreateToggleUI()
+    local Players = game:GetService("Players")
+    local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "MacroRecorderUI"
+    ScreenGui.Parent = PlayerGui
+    
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0, 200, 0, 60)
+    Frame.Position = UDim2.new(0, 10, 0, 10)
+    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Frame.Parent = ScreenGui
+    
+    local Toggle = Instance.new("TextButton")
+    Toggle.Size = UDim2.new(0.9, 0, 0.6, 0)
+    Toggle.Position = UDim2.new(0.05, 0, 0.2, 0)
+    Toggle.Text = "Macro Recorder: ON"
+    Toggle.TextColor3 = Color3.fromRGB(0, 255, 0)
+    Toggle.Parent = Frame
+    
+    Toggle.MouseButton1Click:function()
+        self.Enabled = not self.Enabled
+        Toggle.Text = "Macro Recorder: "..(self.Enabled and "ON" or "OFF")
+        Toggle.TextColor3 = self.Enabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    end
 end
 
--- Bật/tắt ghi file
-function MacroRecorder:SetFileWriting(enabled)
-    self._fileWriteEnabled = enabled
-    print("Ghi file:", enabled and "BẬT" or "TẮT")
-end
+-- Auto-start when script runs
+MacroRecorder:Start()
+
+-- Optional: Uncomment to add toggle UI
+-- MacroRecorder:CreateToggleUI()
 
 return MacroRecorder
