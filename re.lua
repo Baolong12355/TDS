@@ -8,7 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RemoteFunction = if not GameSpoof then ReplicatedStorage:WaitForChild("RemoteFunction") else SpoofEvent
 local RemoteEvent = if not GameSpoof then ReplicatedStorage:WaitForChild("RemoteEvent") else SpoofEvent
-local RSTimer = ReplicatedStorage:WaitForChild("State"):WaitForChild("Timer"):WaitForChild("Time")
+local RSTimer = game:GetService("ReplicatedStorage").State.Timer.Time
 local RSMode = ReplicatedStorage:WaitForChild("State"):WaitForChild("Mode")
 local RSDifficulty = ReplicatedStorage:WaitForChild("State"):WaitForChild("Difficulty")
 local RSMap = ReplicatedStorage:WaitForChild("State"):WaitForChild("Map")
