@@ -1,6 +1,6 @@
 local MacroRecorder = {
     _originalNamecall = nil,
-    _enabled = false,
+    _enabled = truee,
     _eventHandlers = {},
     _fileWriteEnabled = true, -- Bật/tắt ghi file
     _logFile = "macros_log.txt" -- Tên file log
